@@ -53,4 +53,4 @@ Rating-vs-sentiment mismatch flag + agreement %, cost/speed log. (Not done: prod
 Claude was used to scaffold the project structure and draft code and tests; I reviewed, ran and can explain every part. *(Edit this section to reflect your own honest use.)*
 
 ## Screenshots
-*(Add 2–3 dashboard screenshots here after running the app.)*
+![alt text](review2.png) ![alt text](<Screenshot 2026-11-22 005323.png>) ![alt text](Table.png) ![alt text](dashbord.png) ![alt text](review1.png)
