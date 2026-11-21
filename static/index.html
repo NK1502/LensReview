@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ReviewLens</title>
+<style>
+:root{--bg:#f6f7f9;--card:#fff;--tx:#1c2330;--mut:#667085;--bd:#e3e6eb;--pos:#1a7f4b;--neu:#8a6d00;--neg:#c0362c;--acc:#3454d1}
+@media(prefers-color-scheme:dark){:root{--bg:#12151b;--card:#1b1f27;--tx:#e8eaee;--mut:#9aa3b2;--bd:#2c323d;--pos:#4cc38a;--neu:#e0b84a;--neg:#f0776c;--acc:#7b93ff}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--tx);font:14px/1.45 system-ui,sans-serif}
+main{max-width:1200px;margin:0 auto;padding:20px}
+header{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
+h1{margin:0;font-size:22px}h2{font-size:15px;margin:0 0 8px}
+.card{background:var(--card);border:1px solid var(--bd);border-radius:10px;padding:14px}
+.grid{display:grid;gap:12px;margin:14px 0}.cards{grid-template-columns:repeat(auto-fit,minmax(150px,1fr))}.two{grid-template-columns:1fr 1fr}
+.num{font-size:26px;font-weight:650}.lbl{color:var(--mut);font-size:12px}
+button,select{font:inherit;padding:6px 10px;border-radius:6px;border:1px solid var(--bd);background:var(--card);color:var(--tx)}
+button.primary{background:var(--acc);color:#fff;border-color:var(--acc);cursor:pointer}
+button:disabled{opacity:.6}
+table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:8px;border-bottom:1px solid var(--bd);vertical-align:top}
+th{color:var(--mut);font-weight:500;font-size:12px}
+.tag{display:inline-block;padding:1px 7px;border-radius:99px;border:1px solid var(--bd);font-size:12px;margin:0 3px 3px 0}
+.positive{color:var(--pos)}.neutral{color:var(--neu)}.negative{color:var(--neg)}
+.warn{color:var(--neg);font-size:12px}.reply{margin-top:6px;padding:8px;background:var(--bg);border-radius:6px;white-space:pre-wrap}
+ul{margin:0;padding-left:18px}#err{color:var(--neg)}
+@media(max-width:800px){.two{grid-template-columns:1fr}}
+</style></head><body><main>
+<header><h1>ReviewLens</h1>
+<div><input type="file" id="file" accept=".csv"> <button class="primary" id="go">Analyse reviews</button></div></header>
+<p id="err"></p><p id="status" class="lbl">Upload reviews.csv to begin.</p>
+<div id="app" hidden>
+<div class="grid cards" id="cards"></div>
+<div class="grid two">
+ <div class="card"><h2>Top 3 complaints</h2><ul id="complaints"></ul></div>
+ <div class="card"><h2>Top 3 praises</h2><ul id="praises"></ul></div>
+</div>
+<div class="card">
+ <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">
+  <select id="fp"><option value="">All products</option></select>
+  <select id="fs"><option value="">All sentiments</option><option>positive</option><option>neutral</option><option>negative</option></select>
+  <select id="ft"><option value="">All topics</option></select>
+  <label class="lbl" style="align-self:center"><input type="checkbox" id="fr"> needs reply only</label>
+ </div>
+ <table><thead><tr><th>ID</th><th>Product</th><th>★</th><th>Review</th><th>Sentiment</th><th>Topics</th><th>Reply</th></tr></thead><tbody id="rows"></tbody></table>
+</div></div>
+<script>
+const $=id=>document.getElementById(id);
+const esc=s=>{const d=document.createElement('div');d.textContent=s??'';return d.innerHTML};
+let DATA=null;
+async function api(url,opt){const r=await fetch(url,opt);const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.detail||r.statusText);return j}
+$('go').onclick=async()=>{
+  const f=$('file').files[0];if(!f){$('err').textContent='Choose a CSV file first.';return}
+  $('err').textContent='';$('go').disabled=true;$('status').textContent='Analysing… this can take a minute on the first run.';
+  try{DATA=await api('/api/upload',{method:'POST',headers:{'Content-Type':'text/csv'},body:f});render()}catch(e){$('err').textContent=e.message}
+  $('go').disabled=false;
+};
+function render(){
+  const s=DATA.summary,l=DATA.log;$('app').hidden=false;
+  $('status').textContent=l?`${l.ai_calls} AI calls · ${l.cache_hits} served from cache · ${l.seconds}s`:'';
+  const c=[[s.analysed,'reviews analysed'],[s.positive_pct+'%','positive','positive'],[s.neutral_pct+'%','neutral','neutral'],[s.negative_pct+'%','negative','negative'],
+   [s.needs_reply,'need a reply'],[s.rating_agreement_pct+'%','rating ↔ sentiment agreement'],
+   [s.empty+s.duplicates+s.failed,`skipped (${s.empty} empty, ${s.duplicates} duplicate, ${s.failed} failed)`]];
+  $('cards').innerHTML=c.map(([n,t,k])=>`<div class="card"><div class="num ${k||''}">${esc(n)}</div><div class="lbl">${esc(t)}</div></div>`).join('');
+  for(const k of ['complaints','praises'])$(k).innerHTML=((DATA.themes||{})[k]||[]).map(x=>`<li>${esc(x)}</li>`).join('')||'<li class="lbl">Not enough data</li>';
+  fill('fp',[...new Set(DATA.reviews.map(r=>r.product))]);
+  fill('ft',[...new Set(DATA.reviews.flatMap(r=>r.analysis?r.analysis.topics:[]))].sort());
+  table();
+}
+function fill(id,vals){const s=$(id),keep=s.value;s.length=1;vals.forEach(v=>s.add(new Option(v,v)));s.value=keep}
+function table(){
+  const p=$('fp').value,sn=$('fs').value,t=$('ft').value,nr=$('fr').checked;
+  $('rows').innerHTML=DATA.reviews.filter(r=>(!p||r.product===p)&&(!sn||r.analysis?.sentiment===sn)&&(!t||r.analysis?.topics.includes(t))&&(!nr||r.analysis?.needs_reply&&r.status==='ok')).map(r=>{
+    const a=r.analysis;
+    const flags=[r.status!=='ok'?`<div class="warn">${esc(r.status.replace('_',' '))}${r.duplicate_of?' of '+esc(r.duplicate_of):''}</div>`:'',
+      r.injection_attempt?'<div class="warn">⚠ prompt-injection attempt in text</div>':'',
+      r.mismatch?'<div class="warn">⚠ rating disagrees with text</div>':''].join('');
+    return `<tr><td>${esc(r.review_id)}</td><td>${esc(r.product)}</td><td>${r.rating??'?'}</td>
+     <td>${esc(r.text)||'<i class="lbl">(empty)</i>'}${a?`<div class="lbl">${esc(a.summary)}</div>`:''}${flags}</td>
+     <td class="${a?a.sentiment:''}">${a?a.sentiment:'–'}</td><td>${a?a.topics.map(x=>`<span class="tag">${esc(x)}</span>`).join(''):''}</td>
+     <td>${a&&a.needs_reply&&r.status==='ok'?`<button data-id="${esc(r.review_id)}">Suggest reply</button><div class="reply" id="rp-${esc(r.review_id)}" hidden></div>`:''}</td></tr>`}).join('');
+}
+['fp','fs','ft','fr'].forEach(id=>$(id).onchange=table);
+$('rows').onclick=async e=>{
+  const b=e.target.closest('button[data-id]');if(!b)return;
+  const box=$('rp-'+b.dataset.id);b.disabled=true;b.textContent='Writing…';
+  try{box.textContent=(await api('/api/reply',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({review_id:b.dataset.id})})).reply}catch(x){box.textContent='Error: '+x.message}
+  box.hidden=false;b.remove();
+};
+api('/api/dashboard').then(d=>{if(d.reviews.length){DATA=d;render()}}).catch(()=>{});
+</script></main></body></html>
