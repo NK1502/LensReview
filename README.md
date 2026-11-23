@@ -1,4 +1,5 @@
 # ReviewLens – AI review insights
+RENDER DEPLOYED LINK -  https://lensreview.onrender.com
 
 Upload a reviews CSV and get one screen showing what customers love, what they complain about, and which reviews need a reply. Python backend (standard-library HTTP server, no compiled dependencies), Gemini free-tier LLM, SQLite cache, plain HTML/JS dashboard.
 
